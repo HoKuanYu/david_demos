@@ -265,6 +265,7 @@ static vx_status app_run_graph(AppObj *obj)
             if (status == VX_SUCCESS)
             {
                 status = vxGraphParameterEnqueueReadyRef(obj->graph, obj->input_graph_parameter_index, (vx_reference *)&obj->input[obj->enqueueCnt], 1);
+                printf("App Enqueue Input Image %d Done!\n", frame_id);
             }
 
             obj->enqueueCnt++;
@@ -283,21 +284,25 @@ static vx_status app_run_graph(AppObj *obj)
             if(status == VX_SUCCESS)
             {
                 status = vxGraphParameterDequeueDoneRef(obj->graph, obj->input_graph_parameter_index, (vx_reference *)&input_image, 1, &num_refs);
+                printf("App Dequeue Input Image Done!\n");
             }
 
             if(status == VX_SUCCESS)
             {
                 status = vxGraphParameterDequeueDoneRef(obj->graph, obj->output_graph_parameter_index, (vx_reference *)&output_image, 1, &num_refs);
+                printf("App Dequeue Output Image Done!\n");
             }
 
             if (status == VX_SUCCESS)
             {
                 status = tivx_utils_save_vximage_to_bmpfile(output_file_name, output_image);
+                printf("App Save Output Image %d Done!\n", frame_id - APP_BUFFER_Q_DEPTH);
             }
 
             if(status == VX_SUCCESS)
             {
                 status = vxGraphParameterEnqueueReadyRef(obj->graph, obj->output_graph_parameter_index, (vx_reference *)&output_image, 1);
+                printf("App Enqueue Output Image Done!\n");
             }
 
             if (status == VX_SUCCESS)
@@ -317,11 +322,13 @@ static vx_status app_run_graph(AppObj *obj)
             if (input_index != -1 && VX_SUCCESS)
             {
                 status = read_yuv_input(obj->input_file_path, obj->input[input_index]);
+                printf("App Read Input Image %d Done!\n", frame_id);
             }
 
             if (status == VX_SUCCESS)
             {
                 status = vxGraphParameterEnqueueReadyRef(obj->graph, obj->input_graph_parameter_index, (vx_reference*)&obj->input[input_index], 1);
+                printf("App Enqueue Input Image %d Done!\n", frame_id);
             }
 
             obj->enqueueCnt++;
