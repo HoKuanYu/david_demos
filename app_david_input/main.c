@@ -8,7 +8,9 @@
 typedef struct {
     vx_image input;
     vx_image output;
-    vx_image tmp;
+    vx_image gray;
+    vx_image grad_x;
+    vx_image grad_y;
 
     vx_int32 width;
     vx_int32 height;
@@ -23,8 +25,9 @@ typedef struct {
     vx_context context;
     vx_graph graph;
 
-    vx_node convert_node;
-    vx_node not_node;
+    vx_node channel_extract_node;
+    vx_node sobel_node;
+    vx_node magnitude_node;
 
 } AppObj;
 
@@ -174,6 +177,14 @@ static void app_deinit(AppObj *obj)
 
 static void app_delete_graph(AppObj *obj)
 {
+    vxReleaseNode(&obj->channel_extract_node);
+    vxReleaseNode(&obj->sobel_node);
+    vxReleaseNode(&obj->magnitude_node);
+
+    vxReleaseImage(&obj->gray);
+    vxReleaseImage(&obj->grad_x);
+    vxReleaseImage(&obj->grad_y);
+
     vxReleaseGraph(&obj->graph);
 }
 
@@ -231,20 +242,38 @@ static vx_status app_create_graph(AppObj *obj)
 
     if (status == VX_SUCCESS)
     {
-        obj->tmp = vxCreateVirtualImage(obj->graph, obj->width, obj->height, (vx_df_image)VX_DF_IMAGE_RGB);
-        status = vxSetReferenceName((vx_reference)obj->tmp, "IntermediateVirtualRGB");
+        obj->gray = vxCreateVirtualImage(obj->graph, obj->width, obj->height, (vx_df_image)VX_DF_IMAGE_U8);
+        status = vxSetReferenceName((vx_reference)obj->gray, "VirtualGrayU8");
     }
 
     if (status == VX_SUCCESS)
     {
-        obj->convert_node = vxColorConvertNode(obj->graph, obj->input, obj->tmp);
-        status = vxSetReferenceName((vx_reference)obj->convert_node, "ConvertNode");
+        obj->grad_x = vxCreateVirtualImage(obj->graph, obj->width, obj->height, (vx_df_image)VX_DF_IMAGE_S16);
+        status = vxSetReferenceName((vx_reference)obj->grad_x, "VirtualGradXS16");
     }
 
     if (status == VX_SUCCESS)
     {
-        obj->not_node = vxChannelExtractNode(obj->graph, obj->tmp, (vx_enum)VX_CHANNEL_R, obj->output);
-        status = vxSetReferenceName((vx_reference)obj->not_node, "ChannelExtractNode");
+        obj->grad_y = vxCreateVirtualImage(obj->graph, obj->width, obj->height, (vx_df_image)VX_DF_IMAGE_S16);
+        status = vxSetReferenceName((vx_reference)obj->grad_y, "VirtualGradYS16");
+    }
+
+    if (status == VX_SUCCESS)
+    {
+        obj->channel_extract_node = vxChannelExtractNode(obj->graph, obj->input, (vx_enum)VX_CHANNEL_Y, obj->gray);
+        status = vxSetReferenceName((vx_reference)obj->channel_extract_node, "ChannelExtractNode");
+    }
+
+    if (status == VX_SUCCESS)
+    {
+        obj->sobel_node = vxSobel3x3Node(obj->graph, obj->gray, obj->grad_x, obj->grad_y);
+        status = vxSetReferenceName((vx_reference)obj->sobel_node, "SobelNode");
+    }
+
+    if (status == VX_SUCCESS)
+    {
+        obj->magnitude_node = vxMagnitudeNode(obj->graph, obj->grad_x, obj->grad_y, obj->output);
+        status = vxSetReferenceName((vx_reference)obj->magnitude_node, "MagnitudeNode");
     }
 
     return status;
@@ -265,8 +294,8 @@ static vx_status app_init(AppObj *obj)
 
     if (status == VX_SUCCESS)
     {
-        obj->output = vxCreateImage(obj->context, obj->width, obj->height, VX_DF_IMAGE_U8);
-        status = vxSetReferenceName((vx_reference)obj->output, "OutputImageU8");
+        obj->output = vxCreateImage(obj->context, obj->width, obj->height, VX_DF_IMAGE_S16);
+        status = vxSetReferenceName((vx_reference)obj->output, "OutputImageS16");
     }
 
     return status;
@@ -277,7 +306,7 @@ static void app_default_param_set(AppObj *obj)
     snprintf(obj->input_file_path, APP_MAX_FILE_PATH, INPUT_FILE_PATH);
     snprintf(obj->output_file_path, APP_MAX_FILE_PATH, OUTPUT_FILE_PATH);
     obj->start_frame = 500;
-    obj->num_frames = 10;
+    obj->num_frames = 30;
     obj->width = 1024;
     obj->height = 512;
 }
