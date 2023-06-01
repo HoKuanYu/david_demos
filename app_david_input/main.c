@@ -2,8 +2,14 @@
 #include <tivx_utils_file_rd_wr.h>
 
 #define APP_MAX_FILE_PATH           (256u)
+
+#ifdef x86_64
 #define INPUT_FILE_PATH             "/home/david/Desktop/PSDK_08_05/RTOS_x86/tiovx/conformance_tests/test_data/psdkra/tidl_demo_images/"
 #define OUTPUT_FILE_PATH            "/home/david/Desktop/PSDK_08_05/RTOS_x86/tiovx/conformance_tests/test_data/psdkra/david/"
+#else
+#define INPUT_FILE_PATH             "./test_data/psdkra/tidl_demo_images/"
+#define OUTPUT_FILE_PATH            "./test_data/psdkra/david/"
+#endif
 
 typedef struct {
     vx_image input;
