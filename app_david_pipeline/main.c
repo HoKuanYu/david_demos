@@ -253,11 +253,13 @@ static vx_status app_run_graph(AppObj *obj)
             if (status == VX_SUCCESS)
             {
                 status = vxGraphParameterEnqueueReadyRef(obj->graph, obj->output_graph_parameter_index, (vx_reference *)&obj->output[obj->enqueueCnt], 1);
+                printf("App Enqueue Output Image Done!\n");
             }
 
             if (status == VX_SUCCESS)
             {
                 status = read_yuv_input(input_file_name, obj->input[obj->enqueueCnt]);
+                printf("App Read Input Image %d Done!\n", frame_id);
             }
 
             if (status == VX_SUCCESS)
