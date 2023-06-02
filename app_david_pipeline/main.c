@@ -6,6 +6,7 @@
 #define APP_BUFFER_Q_DEPTH          (3)
 #define APP_PIPELINE_DEPTH          (4)
 #define APP_MAX_BUFQ_DEPTH          (8)
+#define NUM_FRAMES                  (100)
 
 #ifdef x86_64
 #define INPUT_FILE_PATH             "/home/david/Desktop/PSDK_08_05/RTOS_x86/tiovx/conformance_tests/test_data/psdkra/tidl_demo_images/"
@@ -15,7 +16,6 @@
 #define OUTPUT_FILE_PATH            "./test_data/psdkra/david/"
 #endif
 
-#define APP_DEBUG 1
 #ifdef APP_DEBUG
 #define APP_PRINTF(f_, ...) printf((f_), ##__VA_ARGS__)
 #else
@@ -226,7 +226,9 @@ static vx_status app_run_graph(AppObj *obj)
 {
     vx_status status = VX_SUCCESS;
     vx_int32 frame_id = obj->start_frame;
+    uint64_t cur_time;
 
+    cur_time = tivxPlatformGetTimeInUsecs();
     for (frame_id = obj->start_frame; frame_id < obj->start_frame + obj->num_frames; frame_id++)
     {
         vx_char input_file_name[APP_MAX_FILE_PATH];
@@ -377,6 +379,8 @@ static vx_status app_run_graph(AppObj *obj)
     vxWaitGraph(obj->graph);
     #endif
 
+    printf("Run for %lu msec\n", (tivxPlatformGetTimeInUsecs() - cur_time) / 1000);
+
     return status;
 }
 
@@ -423,18 +427,30 @@ static vx_status app_create_graph(AppObj *obj)
     {
         obj->channel_extract_node = vxChannelExtractNode(obj->graph, obj->input[0], (vx_enum)VX_CHANNEL_Y, obj->gray);
         status = vxSetReferenceName((vx_reference)obj->channel_extract_node, "ChannelExtractNode");
+        if (status == VX_SUCCESS)
+        {
+            status = vxSetNodeTarget(obj->channel_extract_node, VX_TARGET_STRING, TIVX_TARGET_DSP1);
+        }
     }
 
     if (status == VX_SUCCESS)
     {
         obj->sobel_node = vxSobel3x3Node(obj->graph, obj->gray, obj->grad_x, obj->grad_y);
         status = vxSetReferenceName((vx_reference)obj->sobel_node, "SobelNode");
+        if (status == VX_SUCCESS)
+        {
+            status = vxSetNodeTarget(obj->channel_extract_node, VX_TARGET_STRING, TIVX_TARGET_DSP1);
+        }
     }
 
     if (status == VX_SUCCESS)
     {
         obj->magnitude_node = vxMagnitudeNode(obj->graph, obj->grad_x, obj->grad_y, obj->output[0]);
         status = vxSetReferenceName((vx_reference)obj->magnitude_node, "MagnitudeNode");
+        if (status == VX_SUCCESS)
+        {
+            status = vxSetNodeTarget(obj->channel_extract_node, VX_TARGET_STRING, TIVX_TARGET_DSP2);
+        }
     }
 
     #ifdef APP_ENABLE_PIPELINE_FLOW
@@ -521,7 +537,7 @@ static void app_default_param_set(AppObj *obj)
     obj->enqueueCnt = 0;
     obj->dequeueCnt = 0;
     obj->start_frame = 500;
-    obj->num_frames = 30;
+    obj->num_frames = NUM_FRAMES;
     obj->width = 1024;
     obj->height = 512;
 }

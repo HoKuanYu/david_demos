@@ -2,6 +2,7 @@
 #include <tivx_utils_file_rd_wr.h>
 
 #define APP_MAX_FILE_PATH           (256u)
+#define NUM_FRAMES                  (100)
 
 #ifdef x86_64
 #define INPUT_FILE_PATH             "/home/david/Desktop/PSDK_08_05/RTOS_x86/tiovx/conformance_tests/test_data/psdkra/tidl_demo_images/"
@@ -197,9 +198,10 @@ static void app_delete_graph(AppObj *obj)
 static vx_status app_run_graph(AppObj *obj)
 {
     vx_status status = VX_SUCCESS;
-
     vx_int32 frame_id = obj->start_frame;
+    uint64_t cur_time;
 
+    cur_time = tivxPlatformGetTimeInUsecs();
     for (frame_id = obj->start_frame; frame_id < obj->start_frame + obj->num_frames; frame_id++)
     {
         vx_char input_file_name[APP_MAX_FILE_PATH];
@@ -221,6 +223,7 @@ static vx_status app_run_graph(AppObj *obj)
             status = tivx_utils_save_vximage_to_bmpfile(output_file_name, obj->output);
         }
     }
+    printf("Run for %lu msec\n", (tivxPlatformGetTimeInUsecs() - cur_time) / 1000);
 
     return status;
 }
@@ -268,18 +271,30 @@ static vx_status app_create_graph(AppObj *obj)
     {
         obj->channel_extract_node = vxChannelExtractNode(obj->graph, obj->input, (vx_enum)VX_CHANNEL_Y, obj->gray);
         status = vxSetReferenceName((vx_reference)obj->channel_extract_node, "ChannelExtractNode");
+        if (status == VX_SUCCESS)
+        {
+            status = vxSetNodeTarget(obj->channel_extract_node, VX_TARGET_STRING, TIVX_TARGET_DSP1);
+        }
     }
 
     if (status == VX_SUCCESS)
     {
         obj->sobel_node = vxSobel3x3Node(obj->graph, obj->gray, obj->grad_x, obj->grad_y);
         status = vxSetReferenceName((vx_reference)obj->sobel_node, "SobelNode");
+        if (status == VX_SUCCESS)
+        {
+            status = vxSetNodeTarget(obj->sobel_node, VX_TARGET_STRING, TIVX_TARGET_DSP1);
+        }
     }
 
     if (status == VX_SUCCESS)
     {
         obj->magnitude_node = vxMagnitudeNode(obj->graph, obj->grad_x, obj->grad_y, obj->output);
         status = vxSetReferenceName((vx_reference)obj->magnitude_node, "MagnitudeNode");
+        if (status == VX_SUCCESS)
+        {
+            status = vxSetNodeTarget(obj->magnitude_node, VX_TARGET_STRING, TIVX_TARGET_DSP1);
+        }
     }
 
     return status;
@@ -312,7 +327,7 @@ static void app_default_param_set(AppObj *obj)
     snprintf(obj->input_file_path, APP_MAX_FILE_PATH, INPUT_FILE_PATH);
     snprintf(obj->output_file_path, APP_MAX_FILE_PATH, OUTPUT_FILE_PATH);
     obj->start_frame = 500;
-    obj->num_frames = 30;
+    obj->num_frames = NUM_FRAMES;
     obj->width = 1024;
     obj->height = 512;
 }
