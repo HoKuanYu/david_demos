@@ -15,6 +15,13 @@
 #define OUTPUT_FILE_PATH            "./test_data/psdkra/david/"
 #endif
 
+#define APP_DEBUG 1
+#ifdef APP_DEBUG
+#define APP_PRINTF(f_, ...) printf((f_), ##__VA_ARGS__)
+#else
+#define APP_PRINTF(f_, ...)
+#endif
+
 #ifndef x86_64
 #define APP_ENABLE_PIPELINE_FLOW
 #endif
@@ -107,7 +114,7 @@ static vx_status read_yuv_input(vx_char *file_name, vx_image image)
 
         if(fp == NULL)
         {
-            printf("Unable to open file %s \n", file_name);
+            APP_PRINTF("Unable to open file %s \n", file_name);
             return (VX_FAILURE);
         }
 
@@ -147,7 +154,7 @@ static vx_status read_yuv_input(vx_char *file_name, vx_image image)
         }
 
         if(num_bytes != (img_width * img_height))
-            printf("Luma bytes read = %d, expected = %d\n", num_bytes, img_width * img_height);
+            APP_PRINTF("Luma bytes read = %d, expected = %d\n", num_bytes, img_width * img_height);
         
         vxUnmapImagePatch(image, map_id);
 
@@ -177,7 +184,7 @@ static vx_status read_yuv_input(vx_char *file_name, vx_image image)
             }
 
             if(num_bytes != (img_width*img_height/2))
-                printf("CbCr bytes read = %d, expected = %d\n", num_bytes, img_width*img_height/2);
+                APP_PRINTF("CbCr bytes read = %d, expected = %d\n", num_bytes, img_width*img_height/2);
 
             vxUnmapImagePatch(image, map_id);
         }
@@ -218,7 +225,6 @@ static void app_delete_graph(AppObj *obj)
 static vx_status app_run_graph(AppObj *obj)
 {
     vx_status status = VX_SUCCESS;
-
     vx_int32 frame_id = obj->start_frame;
 
     for (frame_id = obj->start_frame; frame_id < obj->start_frame + obj->num_frames; frame_id++)
@@ -246,33 +252,31 @@ static vx_status app_run_graph(AppObj *obj)
             status = tivx_utils_save_vximage_to_bmpfile(output_file_name, obj->output[0]);
         }
         #else
-        snprintf(output_file_name, APP_MAX_FILE_PATH, "%s/%010d.bmp", obj->output_file_path, frame_id - APP_BUFFER_Q_DEPTH);
 
         if (obj->pipeline < 0)
         {
             if (status == VX_SUCCESS)
             {
                 status = vxGraphParameterEnqueueReadyRef(obj->graph, obj->output_graph_parameter_index, (vx_reference *)&obj->output[obj->enqueueCnt], 1);
-                printf("App Enqueue Output Image Done!\n");
+                APP_PRINTF("App Enqueue Output Image Done!\n");
             }
 
             if (status == VX_SUCCESS)
             {
                 status = read_yuv_input(input_file_name, obj->input[obj->enqueueCnt]);
-                printf("App Read Input Image %d Done!\n", frame_id);
+                APP_PRINTF("App Read Input Image %d Done!\n", frame_id);
             }
 
             if (status == VX_SUCCESS)
             {
                 status = vxGraphParameterEnqueueReadyRef(obj->graph, obj->input_graph_parameter_index, (vx_reference *)&obj->input[obj->enqueueCnt], 1);
-                printf("App Enqueue Input Image %d Done!\n", frame_id);
+                APP_PRINTF("App Enqueue Input Image %d Done!\n", frame_id);
             }
 
             obj->enqueueCnt++;
             obj->enqueueCnt = (obj->enqueueCnt >= APP_BUFFER_Q_DEPTH) ? 0 : obj->enqueueCnt;
             obj->pipeline++;
         }
-
         else
         {
             vx_image input_image;
@@ -280,29 +284,29 @@ static vx_status app_run_graph(AppObj *obj)
             vx_uint32 num_refs;
             vx_int32 input_index = -1;
             
-
+            snprintf(output_file_name, APP_MAX_FILE_PATH, "%s/%010d.bmp", obj->output_file_path, frame_id - APP_BUFFER_Q_DEPTH);
             if(status == VX_SUCCESS)
             {
                 status = vxGraphParameterDequeueDoneRef(obj->graph, obj->input_graph_parameter_index, (vx_reference *)&input_image, 1, &num_refs);
-                printf("App Dequeue Input Image Done!\n");
+                APP_PRINTF("App Dequeue Input Image Done!\n");
             }
 
             if(status == VX_SUCCESS)
             {
                 status = vxGraphParameterDequeueDoneRef(obj->graph, obj->output_graph_parameter_index, (vx_reference *)&output_image, 1, &num_refs);
-                printf("App Dequeue Output Image Done!\n");
+                APP_PRINTF("App Dequeue Output Image Done!\n");
             }
 
             if (status == VX_SUCCESS)
             {
                 status = tivx_utils_save_vximage_to_bmpfile(output_file_name, output_image);
-                printf("App Save Output Image %d Done!\n", frame_id - APP_BUFFER_Q_DEPTH);
+                APP_PRINTF("App Save Output Image %d Done!\n", frame_id - APP_BUFFER_Q_DEPTH);
             }
 
             if(status == VX_SUCCESS)
             {
                 status = vxGraphParameterEnqueueReadyRef(obj->graph, obj->output_graph_parameter_index, (vx_reference *)&output_image, 1);
-                printf("App Enqueue Output Image Done!\n");
+                APP_PRINTF("App Enqueue Output Image Done!\n");
             }
 
             if (status == VX_SUCCESS)
@@ -319,16 +323,16 @@ static vx_status app_run_graph(AppObj *obj)
                 }
             }
 
-            if (input_index != -1 && VX_SUCCESS)
+            if (input_index != -1 && status == VX_SUCCESS)
             {
-                status = read_yuv_input(obj->input_file_path, obj->input[input_index]);
-                printf("App Read Input Image %d Done!\n", frame_id);
+                status = read_yuv_input(input_file_name, obj->input[input_index]);
+                APP_PRINTF("App Read Input Image %d Done!\n", frame_id);
             }
 
             if (status == VX_SUCCESS)
             {
                 status = vxGraphParameterEnqueueReadyRef(obj->graph, obj->input_graph_parameter_index, (vx_reference*)&obj->input[input_index], 1);
-                printf("App Enqueue Input Image %d Done!\n", frame_id);
+                APP_PRINTF("App Enqueue Input Image %d Done!\n", frame_id);
             }
 
             obj->enqueueCnt++;
@@ -336,9 +340,42 @@ static vx_status app_run_graph(AppObj *obj)
             obj->enqueueCnt = (obj->enqueueCnt >= APP_BUFFER_Q_DEPTH) ? 0 : obj->enqueueCnt;
             obj->dequeueCnt = (obj->dequeueCnt >= APP_BUFFER_Q_DEPTH) ? 0 : obj->dequeueCnt;
         }
-        printf("App Reading Input Done %d!\n", frame_id);
+        APP_PRINTF("App Reading Input Done %d!\n", frame_id);
         #endif
     }
+
+    #ifdef APP_ENABLE_PIPELINE_FLOW
+
+    for (frame_id = 0; frame_id < APP_BUFFER_Q_DEPTH; frame_id++)
+    {
+        vx_image input_image;
+        vx_image output_image;
+        vx_uint32 num_refs;
+        vx_char output_file_name[APP_MAX_FILE_PATH];
+
+        snprintf(output_file_name, APP_MAX_FILE_PATH, "%s/%010d.bmp",
+                obj->output_file_path, frame_id + obj->start_frame + obj->num_frames - APP_BUFFER_Q_DEPTH);
+        if(status == VX_SUCCESS)
+        {
+            status = vxGraphParameterDequeueDoneRef(obj->graph, obj->input_graph_parameter_index, (vx_reference *)&input_image, 1, &num_refs);
+            APP_PRINTF("App Dequeue Input Image Done!\n");
+        }
+
+        if(status == VX_SUCCESS)
+        {
+            status = vxGraphParameterDequeueDoneRef(obj->graph, obj->output_graph_parameter_index, (vx_reference *)&output_image, 1, &num_refs);
+            APP_PRINTF("App Dequeue Output Image Done!\n");
+        }
+
+        if (status == VX_SUCCESS)
+        {
+            status = tivx_utils_save_vximage_to_bmpfile(output_file_name, output_image);
+            APP_PRINTF("App Save Output Image %d Done!\n", frame_id + obj->num_frames - APP_BUFFER_Q_DEPTH);
+        }
+    }
+
+    vxWaitGraph(obj->graph);
+    #endif
 
     return status;
 }
@@ -480,6 +517,9 @@ static void app_default_param_set(AppObj *obj)
 {
     snprintf(obj->input_file_path, APP_MAX_FILE_PATH, INPUT_FILE_PATH);
     snprintf(obj->output_file_path, APP_MAX_FILE_PATH, OUTPUT_FILE_PATH);
+    obj->pipeline = -APP_BUFFER_Q_DEPTH;
+    obj->enqueueCnt = 0;
+    obj->dequeueCnt = 0;
     obj->start_frame = 500;
     obj->num_frames = 30;
     obj->width = 1024;
