@@ -2,7 +2,14 @@
 #include "david_display_module.h"
 
 typedef struct {
+    vx_uint32 stop_task;
+    vx_uint32 stop_task_done;
+    tivx_task task;
+} TaskObj;
+
+typedef struct {
     DisplayObj displayObj;
+    TaskObj taskObj;
 
     vx_image input[APP_BUFFER_Q_DEPTH];
     vx_image output[APP_BUFFER_Q_DEPTH];
@@ -29,6 +36,8 @@ typedef struct {
     vx_node magnitude_node;
     vx_node convert_depth_node;
 
+    vx_scalar shift;
+
     vx_int32 input_graph_parameter_index;
     vx_int32 output_graph_parameter_index;
 
@@ -48,8 +57,22 @@ static vx_status app_create_graph(AppObj *obj);
 static vx_status app_verify_graph(AppObj *obj);
 static void app_delete_graph(AppObj *obj);
 static vx_status app_run_graph(AppObj *obj);
+static vx_status app_run_graph_interactive(AppObj *obj);
 static vx_status read_yuv_input(vx_char *file_name, vx_image image);
 static vx_status add_graph_parameter_by_node_index(vx_graph graph, vx_node node, vx_uint32 node_parameter_index);
+
+static char menu[] = {
+    "\n"
+    "\n ========================="
+    "\n Demo : David Display Demo"
+    "\n ========================="
+    "\n"
+    "\n p: Print performance statistics"
+    "\n"
+    "\n x: Exit"
+    "\n"
+    "\n Enter Choice: "
+};
 
 int app_david_dispaly_main(int argc, char *argv[])
 {
@@ -70,14 +93,91 @@ int app_david_dispaly_main(int argc, char *argv[])
         status = app_verify_graph(obj);
     }
 
+    #if APP_RUN_GRAPH_INTERACTIVE
+    if (status == VX_SUCCESS)
+    {
+        status = app_run_graph_interactive(obj);
+    }
+    #else
     if (status == VX_SUCCESS)
     {
         status = app_run_graph(obj);
     }
+    #endif
 
     app_delete_graph(obj);
 
     app_deinit(obj);
+
+    return status;
+}
+
+static void app_run_task(void *app_var)
+{
+    AppObj *obj = (AppObj *)app_var;
+    vx_status status = VX_SUCCESS;
+
+    while(!obj->taskObj.stop_task && (status == VX_SUCCESS))
+    {
+        status = app_run_graph(obj);
+    }
+    obj->taskObj.stop_task_done = 1;
+}
+
+static vx_status app_run_task_create(AppObj *obj)
+{
+    tivx_task_create_params_t params;
+    vx_status status;
+
+    tivxTaskSetDefaultCreateParams(&params);
+    params.task_main = app_run_task;
+    params.app_var = obj;
+
+    obj->taskObj.stop_task_done = 0;
+    obj->taskObj.stop_task = 0;
+
+    status = tivxTaskCreate(&obj->taskObj.task, &params);
+
+    return status;
+}
+
+static void app_run_task_delete(AppObj *obj)
+{
+    while(obj->taskObj.stop_task_done==0)
+    {
+        tivxTaskWaitMsecs(100);
+    }
+
+    tivxTaskDelete(&obj->taskObj.task);
+}
+
+static vx_status app_run_graph_interactive(AppObj *obj)
+{
+    vx_status status;
+    char ch = '\0';
+
+    status = app_run_task_create(obj);
+
+    if (status == VX_SUCCESS)
+    {
+        while(!obj->taskObj.stop_task && status == VX_SUCCESS)
+        {
+            if (ch != '\r' && ch != '\n')
+            {
+                printf(menu);
+            }
+            ch = getchar();
+            printf("\n");
+
+            switch(ch)
+            {
+                case 'x':
+                    obj->taskObj.stop_task = 1;
+                    break;
+            }
+        }
+        app_run_task_delete(obj);
+    }
 
     return status;
 }
@@ -187,7 +287,11 @@ static void app_deinit(AppObj *obj)
         vxReleaseImage(&obj->output[q]);
     }
 
+    vxReleaseScalar(&obj->shift);
+
     app_deinit_display(&obj->displayObj);
+
+    tivxHwaUnLoadKernels(obj->context);
 
     vxReleaseContext(&obj->context);
 }
@@ -334,41 +438,22 @@ static vx_status app_run_graph(AppObj *obj)
                 tivxTaskWaitMsecs(obj->delay_in_msecs - cur_time);
             }
 
+            if (obj->taskObj.stop_task || status == VX_FAILURE)
+            {
+                break;
+            }
+
             APP_PRINTF("App Reading Input Done %d!\n", frame_id);
             #endif
+        }
+
+        if (obj->taskObj.stop_task || status == VX_FAILURE)
+        {
+            break;
         }
     }
 
     #ifdef APP_ENABLE_PIPELINE_FLOW
-
-    for (frame_id = 0; frame_id < APP_BUFFER_Q_DEPTH; frame_id++)
-    {
-        vx_image input_image;
-        vx_image output_image;
-        vx_uint32 num_refs;
-        vx_char output_file_name[APP_MAX_FILE_PATH];
-
-        snprintf(output_file_name, APP_MAX_FILE_PATH, "%s/%010d.bmp",
-                obj->output_file_path, frame_id + obj->start_frame + obj->num_frames - APP_BUFFER_Q_DEPTH);
-        if(status == VX_SUCCESS)
-        {
-            status = vxGraphParameterDequeueDoneRef(obj->graph, obj->input_graph_parameter_index, (vx_reference *)&input_image, 1, &num_refs);
-            APP_PRINTF("App Dequeue Input Image Done!\n");
-        }
-
-        if(status == VX_SUCCESS)
-        {
-            status = vxGraphParameterDequeueDoneRef(obj->graph, obj->output_graph_parameter_index, (vx_reference *)&output_image, 1, &num_refs);
-            APP_PRINTF("App Dequeue Output Image Done!\n");
-        }
-
-        if (status == VX_SUCCESS)
-        {
-            status = tivx_utils_save_vximage_to_bmpfile(output_file_name, output_image);
-            APP_PRINTF("App Save Output Image %d Done!\n", frame_id + obj->num_frames - APP_BUFFER_Q_DEPTH);
-        }
-    }
-
     vxWaitGraph(obj->graph);
     #endif
 
@@ -428,6 +513,14 @@ static vx_status app_create_graph(AppObj *obj)
 
     if (status == VX_SUCCESS)
     {
+        vx_int32 shift_value = 0;
+        obj->shift = vxCreateScalar(obj->context, (vx_enum)VX_TYPE_INT32, &shift_value);
+        status = vxSetReferenceName((vx_reference)obj->shift, "ScalarShift");
+        APP_PRINTF("App Create Scalar Shift Done!\n");
+    }
+
+    if (status == VX_SUCCESS)
+    {
         obj->channel_extract_node = vxChannelExtractNode(obj->graph, obj->input[0], (vx_enum)VX_CHANNEL_Y, obj->gray);
         status = vxSetReferenceName((vx_reference)obj->channel_extract_node, "ChannelExtractNode");
         if (status == VX_SUCCESS)
@@ -461,9 +554,7 @@ static vx_status app_create_graph(AppObj *obj)
 
     if (status == VX_SUCCESS)
     {
-        vx_int32 shift_value = 0;
-        vx_scalar shift = vxCreateScalar(obj->context, (vx_enum)VX_TYPE_INT32, &shift_value);
-        obj->convert_depth_node = vxConvertDepthNode(obj->graph, obj->magnitude, obj->output[0], (vx_enum)VX_CONVERT_POLICY_WRAP, shift);
+        obj->convert_depth_node = vxConvertDepthNode(obj->graph, obj->magnitude, obj->output[0], (vx_enum)VX_CONVERT_POLICY_WRAP, obj->shift);
         status = vxSetReferenceName((vx_reference)obj->convert_depth_node, "ConvertDepthNode");
         if (status == VX_SUCCESS)
         {

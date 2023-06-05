@@ -74,6 +74,7 @@
 #define APP_PIPELINE_DEPTH              (4)
 #define APP_MAX_BUFQ_DEPTH              (8)
 #define NUM_FRAMES                      (400)
+#define APP_RUN_GRAPH_INTERACTIVE       (1)
 
 
 #ifndef x86_64
