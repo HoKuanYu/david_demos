@@ -1,3 +1,6 @@
+#include <utils/perf_stats/include/app_perf_stats.h>
+#include <utils/grpx/include/app_grpx.h>
+
 #include "app_common.h"
 #include "david_display_module.h"
 
@@ -8,8 +11,14 @@ typedef struct {
 } TaskObj;
 
 typedef struct {
+    app_perf_point_t total_perf;
+    app_perf_point_t fileio_perf;
+} PerfObj;
+
+typedef struct {
     DisplayObj displayObj;
     TaskObj taskObj;
+    PerfObj perfObj;
 
     vx_image input[APP_BUFFER_Q_DEPTH];
     vx_image output[APP_BUFFER_Q_DEPTH];
@@ -160,6 +169,7 @@ static vx_status app_run_graph_interactive(AppObj *obj)
 
     if (status == VX_SUCCESS)
     {
+        appPerfStatsResetAll();
         while(!obj->taskObj.stop_task && status == VX_SUCCESS)
         {
             if (ch != '\r' && ch != '\n')
@@ -171,6 +181,16 @@ static vx_status app_run_graph_interactive(AppObj *obj)
 
             switch(ch)
             {
+                case 'p':
+                    appPerfStatsPrintAll();
+                    status = tivx_utils_graph_perf_print(obj->graph);
+                    appPerfPointPrint(&obj->perfObj.fileio_perf);
+                    appPerfPointPrint(&obj->perfObj.total_perf);
+                    printf("\n");
+                    appPerfPointPrintFPS(&obj->perfObj.total_perf);
+                    appPerfPointReset(&obj->perfObj.total_perf);
+                    printf("\n");
+                    break;
                 case 'x':
                     obj->taskObj.stop_task = 1;
                     break;
@@ -349,6 +369,7 @@ static vx_status app_run_graph(AppObj *obj)
             }
             #else
 
+            appPerfPointBegin(&obj->perfObj.total_perf);
             if (obj->pipeline < 0)
             {
                 if (status == VX_SUCCESS)
@@ -357,11 +378,13 @@ static vx_status app_run_graph(AppObj *obj)
                     APP_PRINTF("App Enqueue Output Image Done!\n");
                 }
 
+                appPerfPointBegin(&obj->perfObj.fileio_perf);
                 if (status == VX_SUCCESS)
                 {
                     status = read_yuv_input(input_file_name, obj->input[obj->enqueueCnt]);
                     APP_PRINTF("App Read Input Image %d Done!\n", frame_id);
                 }
+                appPerfPointEnd(&obj->perfObj.fileio_perf);
 
                 if (status == VX_SUCCESS)
                 {
@@ -399,6 +422,7 @@ static vx_status app_run_graph(AppObj *obj)
                     APP_PRINTF("App Enqueue Output Image Done!\n");
                 }
 
+                appPerfPointBegin(&obj->perfObj.fileio_perf);
                 if (status == VX_SUCCESS)
                 {
                     vx_int32 i;
@@ -418,6 +442,7 @@ static vx_status app_run_graph(AppObj *obj)
                     status = read_yuv_input(input_file_name, obj->input[input_index]);
                     APP_PRINTF("App Read Input Image %d Done!\n", frame_id);
                 }
+                appPerfPointEnd(&obj->perfObj.fileio_perf);
 
                 if (status == VX_SUCCESS)
                 {
@@ -442,6 +467,8 @@ static vx_status app_run_graph(AppObj *obj)
             {
                 break;
             }
+
+            appPerfPointEnd(&obj->perfObj.total_perf);
 
             APP_PRINTF("App Reading Input Done %d!\n", frame_id);
             #endif
@@ -536,7 +563,7 @@ static vx_status app_create_graph(AppObj *obj)
         status = vxSetReferenceName((vx_reference)obj->sobel_node, "SobelNode");
         if (status == VX_SUCCESS)
         {
-            status = vxSetNodeTarget(obj->sobel_node, VX_TARGET_STRING, TIVX_TARGET_DSP1);
+            status = vxSetNodeTarget(obj->sobel_node, VX_TARGET_STRING, TIVX_TARGET_DSP2);
         }
         APP_PRINTF("App Create Sobel Node Done!\n");
     }
@@ -558,7 +585,7 @@ static vx_status app_create_graph(AppObj *obj)
         status = vxSetReferenceName((vx_reference)obj->convert_depth_node, "ConvertDepthNode");
         if (status == VX_SUCCESS)
         {
-            status = vxSetNodeTarget(obj->convert_depth_node, VX_TARGET_STRING, TIVX_TARGET_DSP1);
+            status = vxSetNodeTarget(obj->convert_depth_node, VX_TARGET_STRING, TIVX_TARGET_DSP2);
         }
         APP_PRINTF("App Create Convert Depth Node Done!\n");
     }
@@ -633,6 +660,7 @@ static vx_status app_create_graph(AppObj *obj)
 static vx_status app_init(AppObj *obj)
 {
     vx_status status = VX_SUCCESS;
+    app_grpx_init_prms_t grpx_prms;
 
     obj->context = vxCreateContext();
     status = vxGetStatus((vx_reference)obj->context);
@@ -656,6 +684,18 @@ static vx_status app_init(AppObj *obj)
     {
         status = app_init_display(obj->context, &obj->displayObj, "display_obj");
     }
+
+    appPerfPointSetName(&obj->perfObj.total_perf, "TOTAL");
+    appPerfPointSetName(&obj->perfObj.fileio_perf, "FILEIO");
+
+    #ifndef x86_64
+    if(obj->displayObj.display_option == 1)
+    {
+        appGrpxInitParamsInit(&grpx_prms, obj->context);
+        grpx_prms.draw_callback = appGrpxDrawDefault;
+        appGrpxInit(&grpx_prms);
+    }
+    #endif
 
     return status;
 }

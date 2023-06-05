@@ -65,6 +65,7 @@
 #include <TI/tivx.h>
 #include <TI/tivx_task.h>
 #include <tivx_utils_file_rd_wr.h>
+#include <tivx_utils_graph_perf.h>
 
 #include <stdio.h>
 
